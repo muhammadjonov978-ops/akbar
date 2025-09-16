@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="uz">
+<head>
+  <meta charset="utf-8" />
+  <title>Kvadratdan Qoch — Dodge Game</title>
+  <style>
+    html,body {height:100%;margin:0;font-family:Arial,Helvetica,sans-serif;background:#111;color:#eee}
+    #game {width:600px;height:400px;background:#0a0a0a;margin:30px auto;position:relative;overflow:hidden;border:4px solid #222;border-radius:8px}
+    #player {width:30px;height:30px;background:#4ade80;position:absolute;left:285px;bottom:20px;border-radius:4px}
+    .enemy {width:30px;height:30px;background:#f43f5e;position:absolute;top:-40px;border-radius:4px}
+    #hud{width:600px;margin:0 auto;text-align:center}
+    #score{font-size:18px;margin-right:12px}
+    #startBtn{padding:8px 14px;border-radius:6px;background:#2563eb;border:none;color:white;cursor:pointer}
+    #gameover{display:none;position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;background:rgba(0,0,0,0.6);font-size:24px;flex-direction:column}
+  </style>
+</head>
+<body>
+  <div id="hud">
+    <span id="score">Ball: 0</span>
+    <button id="startBtn">Boshlash</button>
+    <span style="margin-left:12px;font-size:13px;color:#aaa">→ Chap/ o‘ng / Space to‘pni sakratish</span>
+  </div>
+
+  <div id="game">
+    <div id="player"></div>
+    <div id="gameover">
+      <div>Oʻyin tugadi!</div>
+      <div id="finalScore" style="margin-top:8px"></div>
+      <button id="restart" style="margin-top:12px;padding:8px 12px;border-radius:6px">Qayta</button>
+    </div>
+  </div>
+
+<script>
+(() => {
+  const game = document.getElementById('game');
+  const player = document.getElementById('player');
+  const startBtn = document.getElementById('startBtn');
+  const scoreEl = document.getElementById('score');
+  const gameover = document.getElementById('gameover');
+  const finalScore = document.getElementById('finalScore');
+  const restart = document.getElementById('restart');
+
+  const GW = game.clientWidth, GH = game.clientHeight;
+  let px = 285, py = 20; // bottom offset
+  let vx = 0, vy = 0;
+  let enemies = [];
+  let running = false;
+  let score = 0;
+  let spawnTimer = 0, spawnInterval = 90; // frames
+  let gravity = 0.8;
+  let jumpPower = 13;
+
+  function rectColl(a,b){
+    return !(a.x + a.w < b.x || a.x > b.x + b.w || a.y + a.h < b.y || a.y > b.y + b.h);
+  }
+
+  function spawnEnemy() {
+    const w = 30;
+    const x = Math.random() * (GW - w);
+    const speed = 2 + Math.random()*2 + score*0.02;
+    const el = document.createElement('div');
+    el.className = 'enemy';
+    el.style.left = x + 'px';
+    el.style.top = '-40px';
+    game.appendChild(el);
+    enemies.push({el,x, y:-40, w, h:30, speed});
+  }
+
+  function update() {
+    if(!running) return;
+    // player physics
+    vy -= gravity; // up is positive for easier math (we treat bottom as 0)
+    py += vy;
+    if (py < 0) { py = 0; vy = 0; } // ground
+    if (py > GH - 50) { py = GH - 50; vy = 0; } // ceiling clamp (shouldn't happen)
+
+    player.style.bottom = `${py}px`;
+    player.style.left = `${px}px`;
+
+    // enemies
+    for (let i = enemies.length-1; i>=0; i--) {
+      const e = enemies[i];
+      e.y += e.speed;
+      if (e.y > GH) {
+        // passed bottom -> remove and increase score
+        e.el.remove();
+        enemies.splice(i,1);
+        score += 1;
+        scoreEl.textContent = `Ball: ${score}`;
+        continue;
+      }
+      e.el.style.top = `${e.y}px`;
+
+      // collision check (convert player pos to top-left coords)
+      const playerRect = { x: px, y: GH - py - 30, w: 30, h: 30 };
+      const enemyRect = { x: e.x, y: e.y, w: e.w, h: e.h };
+      if (rectColl(playerRect, enemyRect)) {
+        endGame();
+        return;
+      }
+    }
+
+    // spawn logic
+    spawnTimer++;
+    if (spawnTimer >= Math.max(30, spawnInterval - Math.floor(score/3))) {
+      spawnTimer = 0;
+      spawnEnemy();
+    }
+
+    requestAnimationFrame(update);
+  }
+
+  function startGame(){
+    // reset
+    enemies.forEach(e=>e.el.remove());
+    enemies = [];
+    running = true;
+    score = 0;
+    scoreEl.textContent = `Ball: ${score}`;
+    px = (GW - 30)/2;
+    py = 20;
+    vy = 0;
+    spawnTimer = 0;
+    gameover.style.display = 'none';
+    requestAnimationFrame(update);
+  }
+
+  function endGame(){
+    running = false;
+    finalScore.textContent = `Siz ${score} ball to‘pladingiz.`;
+    gameover.style.display = 'flex';
+  }
+
+  // controls
+  window.addEventListener('keydown', (e) => {
+    if (!running && e.key === ' '){ startGame(); return; }
+    if (e.key === 'ArrowLeft' || e.key === 'a') px = Math.max(0, px - 20);
+    if (e.key === 'ArrowRight' || e.key === 'd') px = Math.min(GW - 30, px + 20);
+    if (e.key === ' ' || e.key === 'ArrowUp' || e.key === 'w') {
+      if (py === 0) {
+        vy = jumpPower;
+      }
+    }
+  });
+
+  // buttons
+  startBtn.addEventListener('click', startGame);
+  restart.addEventListener('click', startGame);
+
+  // touch controls (simple)
+  let touchStartX = null;
+  game.addEventListener('touchstart', (ev) => {
+    const t = ev.touches[0];
+    touchStartX = t.clientX;
+  });
+  game.addEventListener('touchmove', (ev) => {
+    const t = ev.touches[0];
+    const dx = t.clientX - touchStartX;
+    px = Math.min(Math.max(0, px + dx), GW-30);
+    touchStartX = t.clientX;
+  });
+})();
+</script>
+</body>
+</html>
+2) Matnli sarguzasht o‘yini (brauzer)
+Fayl: text_adventure.html — oson tarzda kengaytirishingiz mumkin.
+
+html
+Копировать код
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8" />
+<title>Matnli Sarguzasht</title>
+<style>
+  body{background:#0b1220;color:#e6eef8;font-family:Verdana;padding:30px}
+  #box{max-width:700px;margin:0 auto;background:#071028;padding:20px;border-radius:8px}
+  button{margin-top:12px;padding:8px 12px;border-radius:6px;border:none;background:#1f6feb;color:white;cursor:pointer}
+  .choice{display:block;margin:8px 0}
+</style>
+</head>
+<body>
+<div id="box">
+  <div id="text">Siz qorong‘i o‘rmon yo‘lida turibsiz. Oldingizda ikkita yo‘l bor: <strong>chap</strong> va <strong>o‘ng</strong>.</div>
+  <div id="choices"></div>
+</div>
+
+<script>
+const story = {
+  start: {
+    text: "Siz qorong‘i o‘rmon yo‘lida turibsiz. Oldingizda ikkita yo‘l bor: chap va o'ng.",
+    choices: [
+      {t:"Chapga borish", to:"cave"},
+      {t:"O'ngga borish", to:"river"}
+    ]
+  },
+  cave: {
+    text: "Siz g'orga kirdingiz. Ichkarida yaltirayotgan narsa ko'rdingiz.",
+    choices: [
+      {t:"Yaqinroq borib ko'rish", to:"treasure"},
+      {t:"Orqaga qaytib haydash", to:"start"}
+    ]
+  },
+  river: {
+    text: "Siz daryo bo‘yiga yetdingiz. Ko‘prik yaroqsiz ko‘rinadi.",
+    choices: [
+      {t:"Suvdan o'tib ko'rish", to:"swim"},
+      {t:"Orqaga qaytish", to:"start"}
+    ]
+  },
+  treasure: {
+    text: "Siz narsa yaqiniga bordingiz — bu qadimiy xazina! O'yin tugadi, g'olibsiz!",
+    choices: [{t:"Boshidan boshlash", to:"start"}]
+  },
+  swim: {
+    text: "Siz yugurib suvga sakradingiz, ammo oqim kuchli. Omadsiz tugadi.",
+    choices: [{t:"Boshidan boshlash", to:"start"}]
+  }
+};
+
+const textEl = document.getElementById('text');
+const choicesEl = document.getElementById('choices');
+
+function render(node){
+  textEl.innerHTML = story[node].text;
+  choicesEl.innerHTML = '';
+  story[node].choices.forEach(c=>{
+    const btn = document.createElement('button');
+    btn.className = 'choice';
+    btn.textContent = c.t;
+    btn.onclick = () => render(c.to);
+    choicesEl.appendChild(btn);
+  });
+}
+
+render('start');
+</script>
+</body>
+</html>
